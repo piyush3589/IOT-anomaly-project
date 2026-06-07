@@ -153,7 +153,7 @@ def seed():
     client = chromadb.PersistentClient(path=CHROMA_PATH)
 
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
+        model_name="paraphrase-MiniLM-L3-v2"
     )
 
     collection = client.get_or_create_collection(
