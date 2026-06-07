@@ -20,7 +20,7 @@ class RemediationRetriever:
             return
         client = chromadb.PersistentClient(path=CHROMA_PATH)
         ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2"
+            model_name="paraphrase-MiniLM-L3-v2"
         )
         self._collection = client.get_collection(
             name="iot_remediation_kb",
