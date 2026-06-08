@@ -101,6 +101,11 @@ POST /analyze  {"sensor_id": "temp_001"}
 
 ---
 
+
+**API:** https://iot-project-6ogr.onrender.com
+  
+**Swagger UI:** https://iot-project-6ogr.onrender.com/docs
+
 ## Quickstart
 
 ```bash
