@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import chromadb
 from chromadb.utils import embedding_functions
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 CHROMA_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 
@@ -152,9 +153,7 @@ ESTIMATED DOWNTIME: N/A (control room must remain operational)
 def seed():
     client = chromadb.PersistentClient(path=CHROMA_PATH)
 
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="paraphrase-MiniLM-L3-v2"
-    )
+    ef = DefaultEmbeddingFunction()
 
     collection = client.get_or_create_collection(
         name="iot_remediation_kb",
