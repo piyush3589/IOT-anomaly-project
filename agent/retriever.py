@@ -6,6 +6,7 @@ Called by the agent's remediation node after anomaly is confirmed.
 import os
 import chromadb
 from chromadb.utils import embedding_functions
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 CHROMA_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 
@@ -19,9 +20,8 @@ class RemediationRetriever:
         if self._collection is not None:
             return
         client = chromadb.PersistentClient(path=CHROMA_PATH)
-        ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="paraphrase-MiniLM-L3-v2"
-        )
+      
+        ef = DefaultEmbeddingFunction()
         self._collection = client.get_collection(
             name="iot_remediation_kb",
             embedding_function=ef,
