@@ -1,4 +1,6 @@
 # IoT Anomaly Copilot
+[![Live Demo](https://img.shields.io/badge/Live-Demo-green)](https://iot-project-6ogr.onrender.com/docs)
+[![GitHub](https://img.shields.io/badge/GitHub-Repo-blue)](https://github.com/piyush3589/iot-anomaly-copilot)
 
 An AI agent that monitors IoT sensors, detects anomalies using an LLM, retrieves remediation playbooks via RAG, and returns structured incident reports — all through a single API call.
 
