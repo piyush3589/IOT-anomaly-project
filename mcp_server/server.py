@@ -175,7 +175,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         sid = arguments["sensor_id"]
         if sid not in SENSORS:
             return [types.TextContent(type="text", text=f"ERROR: Unknown sensor '{sid}'")]
-        reading = _generate_reading(sid, anomalous=True)  # always anomalous for demo
+        anomalous = arguments.get("anomalous", True)    
+        reading = _generate_reading(sid, anomalous=anomalous)  # always anomalous for demo
         return [types.TextContent(type="text", text=json.dumps(reading, indent=2))]
 
     if name == "get_history":
