@@ -82,3 +82,5 @@ class AgentState(BaseModel):
     report: Optional[ActionReport] = None
     error: Optional[str] = None
     retry_count: int = 0
+    force_normal: bool = False
+
