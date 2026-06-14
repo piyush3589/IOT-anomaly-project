@@ -44,7 +44,7 @@ def fetch_sensor_data(state: AgentState) -> AgentState:
     """Fetch sensor data via MCP server."""
     print(f"[Node 1] Fetching data for sensor: {state.sensor_id}")
     try:
-        reading = run_mcp_tool("get_reading", {"sensor_id": state.sensor_id})
+        reading = run_mcp_tool("get_reading", {"sensor_id": state.sensor_id,"anomalous": not state.force_normal})
         history = run_mcp_tool("get_history", {"sensor_id": state.sensor_id, "n": 10})
         print(f"[DEBUG] Reading: {reading}")
         print(f"[DEBUG] History count: {len(history) if history else 0}")
