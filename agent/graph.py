@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 
 from agent.models import (
@@ -25,7 +25,6 @@ from agent.models import (
     RemediationStep, SeverityLevel,
 )
 from agent.retriever import retriever
-from mcp_server.client import run_mcp_tool
 
 # ── LLM setup ───────────────────────────────────────────────────────────────
 
@@ -36,10 +35,9 @@ llm = ChatGroq(
 )
 
 
-# ── Node 1: Fetch sensor data via MCP ───────────────────────────────────────
+# ── Node 1: Fetch sensor data ────────────────────────────────────────────────
 
 def fetch_sensor_data(state: AgentState) -> AgentState:
-    """Fetch sensor data — direct simulation bypassing MCP."""
     print(f"[Node 1] Fetching data for sensor: {state.sensor_id}")
 
     import random
@@ -78,16 +76,12 @@ def fetch_sensor_data(state: AgentState) -> AgentState:
         v = round(random.uniform(low, high * 1.3), 2)
         history.append({**reading, "value": v, "timestamp": ts.isoformat()})
 
-    print(f"[DEBUG] Reading: {reading}")
-    print(f"[DEBUG] History count: {len(history)}")
-
     return AgentState(**{**state.model_dump(), "raw_reading": reading, "history": history})
 
 
-# ── Node 2: Detect anomaly with LLM ─────────────────────────────────────────
+# ── Node 2: Detect anomaly ───────────────────────────────────────────────────
 
 def detect_anomaly(state: AgentState) -> AgentState:
-    """LLM analyses the reading + history and produces an AnomalyDetection."""
     print(f"[Node 2] Detecting anomaly for sensor: {state.sensor_id}")
 
     reading = state.raw_reading
@@ -117,7 +111,7 @@ Analyse whether this reading is anomalous. Respond ONLY with a JSON object match
 Rules:
 - severity CRITICAL if value exceeds normal by >25% or status is CRITICAL_HIGH/CRITICAL_LOW
 - severity HIGH if 15-25% deviation
-- severity MEDIUM if 5-15% deviation  
+- severity MEDIUM if 5-15% deviation
 - severity LOW if <5% deviation or within range
 - trend based on last 5 historical values direction
 """
@@ -125,18 +119,16 @@ Rules:
     response = llm.invoke([HumanMessage(content=prompt)])
     raw = response.content.strip()
 
-    # strip markdown code fences if present
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    print(f"[DEBUG] Raw LLM response: {raw}")
+
     data = json.loads(raw.strip())
 
-    # Fallback: fill None numeric fields from raw_reading
     if reading:
         normal_range = reading.get("normal_range", [None, None])
-        if data.get("current_value") is None:          # ← this line changed
+        if data.get("current_value") is None:
             data["current_value"] = reading.get("value")
         if not data.get("unit"):
             data["unit"] = reading.get("unit", "")
@@ -156,34 +148,42 @@ Rules:
                 data["deviation_pct"] = 0.0
 
     anomaly = AnomalyDetection(**data)
-    return AgentState(**{**state.model_dump(), "anomaly": anomaly}) 
+    return AgentState(**{**state.model_dump(), "anomaly": anomaly})
 
 
-# ── Node 3: RAG over remediation knowledge base ──────────────────────────────
+# ── Node 3: RAG retrieval ────────────────────────────────────────────────────
 
 def rag_remediate(state: AgentState) -> AgentState:
-    """Semantic search over remediation KB using anomaly context."""
-    print(f"[Node 3] RAG retrieval for: {state.anomaly.summary}")
+    retry_count = state.retry_count
 
-    query = (
-        f"{state.anomaly.summary} "
-        f"sensor {state.sensor_id} "
-        f"value {state.anomaly.current_value} {state.anomaly.unit} "
-        f"severity {state.anomaly.severity}"
-    )
+    # On retry, use more specific query targeting weak areas
+    if retry_count > 0:
+        print(f"[Node 3] RAG RETRY {retry_count} — refining query")
+        query = (
+            f"SPECIFIC remediation for {state.anomaly.severity} severity "
+            f"{state.anomaly.summary} "
+            f"deviation {state.anomaly.deviation_pct}% "
+            f"trend {state.anomaly.trend} "
+            f"sensor {state.sensor_id}"
+        )
+    else:
+        print(f"[Node 3] RAG retrieval for: {state.anomaly.summary}")
+        query = (
+            f"{state.anomaly.summary} "
+            f"sensor {state.sensor_id} "
+            f"value {state.anomaly.current_value} {state.anomaly.unit} "
+            f"severity {state.anomaly.severity}"
+        )
 
     context, source_id, confidence = retriever.retrieve(query)
-
-    # Attach source info to context
     enriched = f"[Source: {source_id} | Confidence: {confidence}]\n\n{context}"
     return AgentState(**{**state.model_dump(), "rag_context": enriched})
 
 
-# ── Node 4: Generate final structured report ─────────────────────────────────
+# ── Node 4: Generate report ──────────────────────────────────────────────────
 
 def generate_report(state: AgentState) -> AgentState:
-    """LLM synthesises everything into a final ActionReport."""
-    print(f"[Node 4] Generating action report")
+    print(f"[Node 4] Generating action report (attempt {state.retry_count + 1})")
 
     reading = state.raw_reading
     anomaly = state.anomaly
@@ -212,7 +212,7 @@ Generate a JSON action report matching this schema EXACTLY (no extra fields):
     {{"step_number": 1, "action": "...", "responsible_team": "...", "estimated_time": "..."}}
   ],
   "knowledge_source": "<source id from context>",
-  "confidence": <0.0–1.0 float from context>,
+  "confidence": <0.0–1.0 float — be honest, low if KB context was weak>,
   "escalate_immediately": <true if severity is CRITICAL>,
   "affected_systems": ["<system1>", "<system2>"],
   "estimated_downtime_hours": <number or null>,
@@ -231,15 +231,13 @@ Include 3–5 remediation steps. Be specific and actionable.
             raw = raw[4:]
 
     data = json.loads(raw.strip())
-
-    # re-attach the validated anomaly object
     data["anomaly"] = anomaly.model_dump()
 
     report = ActionReport(**data)
     return AgentState(**{**state.model_dump(), "report": report})
 
 
-# ── Conditional edge: skip remediation if no anomaly ─────────────────────────
+# ── Conditional edge 1: skip remediation if no anomaly ───────────────────────
 
 def should_remediate(state: AgentState) -> Literal["rag_remediate", "skip"]:
     if state.error:
@@ -249,7 +247,26 @@ def should_remediate(state: AgentState) -> Literal["rag_remediate", "skip"]:
     return "rag_remediate"
 
 
-# ── Build the graph ──────────────────────────────────────────────────────────
+# ── Conditional edge 2: retry if confidence is low ───────────────────────────
+
+def should_retry(state: AgentState) -> Literal["rag_remediate", "__end__"]:
+    """
+    Agentic loop: agent evaluates its own report confidence.
+    If confidence < 0.5 and retries < 2, loop back to RAG with refined query.
+    This is the decision the agent makes at runtime — not hardcoded by the developer.
+    """
+    report = state.report
+    retry_count = state.retry_count
+
+    if report and report.confidence < 0.5 and retry_count < 2:
+        print(f"[Agent] Low confidence ({report.confidence}) — retrying RAG (attempt {retry_count + 1})")
+        return "rag_remediate"
+
+    print(f"[Agent] Confidence acceptable ({report.confidence if report else 'N/A'}) — finalizing report")
+    return END
+
+
+# ── Build graph ──────────────────────────────────────────────────────────────
 
 def build_graph():
     graph = StateGraph(AgentState)
@@ -261,24 +278,30 @@ def build_graph():
 
     graph.set_entry_point("fetch_sensor_data")
     graph.add_edge("fetch_sensor_data", "detect_anomaly")
+
     graph.add_conditional_edges(
         "detect_anomaly",
         should_remediate,
         {"rag_remediate": "rag_remediate", "skip": END},
     )
+
     graph.add_edge("rag_remediate", "generate_report")
-    graph.add_edge("generate_report", END)
+
+    # ← Agentic loop: agent decides whether to retry based on its own confidence
+    graph.add_conditional_edges(
+        "generate_report",
+        should_retry,
+        {"rag_remediate": "rag_remediate", END: END},
+    )
 
     return graph.compile()
 
 
-# Singleton compiled graph
 agent = build_graph()
 
 
 def run_analysis(sensor_id: str) -> dict:
-    """Entry point called by FastAPI."""
-    initial_state = AgentState(sensor_id=sensor_id)
+    initial_state = AgentState(sensor_id=sensor_id, retry_count=0)
     final_state = agent.invoke(initial_state)
 
     if final_state.get("error"):
