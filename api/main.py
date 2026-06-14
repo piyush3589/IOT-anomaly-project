@@ -60,7 +60,7 @@ def health():
     return {"status": "ok", "service": "IoT Anomaly Copilot"}
 
 
-#@app.get("/sensors")
+@app.get("/sensors")
 def list_sensors():
     """List all available IoT sensors fetched via MCP."""
     try:
@@ -70,7 +70,7 @@ def list_sensors():
         raise HTTPException(status_code=503, detail=f"MCP server unavailable: {e}")
 
 
-#@app.get("/sensors/{sensor_id}/reading")
+@app.get("/sensors/{sensor_id}/reading")
 def get_sensor_reading(sensor_id: str):
     """Get latest reading for a sensor via MCP."""
     try:
@@ -80,7 +80,7 @@ def get_sensor_reading(sensor_id: str):
         raise HTTPException(status_code=503, detail=str(e))
 
 
-#@app.get("/sensors/{sensor_id}/history")
+@app.get("/sensors/{sensor_id}/history")
 def get_sensor_history(sensor_id: str, n: int = 10):
     """Get historical readings for a sensor via MCP."""
     try:
