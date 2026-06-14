@@ -48,6 +48,8 @@ app.add_middleware(
 class AnalyzeRequest(BaseModel):
     sensor_id: str
     include_history: bool = False
+    force_normal: bool = False
+
 
 
 class AnalyzeResponse(BaseModel):
