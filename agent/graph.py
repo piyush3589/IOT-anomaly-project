@@ -93,17 +93,21 @@ Rules:
 - trend based on last 5 historical values direction
 """
 
-    response = llm.invoke([HumanMessage(content=prompt)])
-    raw = response.content.strip()
+    try:
+        response = llm.invoke([HumanMessage(content=prompt)])
+        raw = response.content.strip()
+        print(f"[DEBUG] Raw LLM response: {raw}")
 
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
 
-    data = json.loads(raw.strip())
-    print(f"[DEBUG] Raw LLM response: {raw}")
+        data = json.loads(raw.strip())
 
+    except Exception as e:
+        print(f"[DEBUG] Error in detect_anomaly: {e}")
+        raise
 
     if reading:
         normal_range = reading.get("normal_range", [None, None])
