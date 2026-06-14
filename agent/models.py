@@ -1,6 +1,5 @@
 """
 Pydantic models — structured outputs for every stage of the pipeline.
-Enforces the JD requirement: "Structured Outputs, Context Management".
 """
 
 from enum import Enum
