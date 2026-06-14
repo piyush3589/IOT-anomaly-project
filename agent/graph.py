@@ -102,6 +102,8 @@ Rules:
             raw = raw[4:]
 
     data = json.loads(raw.strip())
+    print(f"[DEBUG] Raw LLM response: {raw}")
+
 
     if reading:
         normal_range = reading.get("normal_range", [None, None])
