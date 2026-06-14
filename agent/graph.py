@@ -25,6 +25,9 @@ from agent.models import (
     RemediationStep, SeverityLevel,
 )
 from agent.retriever import retriever
+from mcp_server.client import run_mcp_tool
+
+
 
 # ── LLM setup ───────────────────────────────────────────────────────────────
 
@@ -38,45 +41,19 @@ llm = ChatGroq(
 # ── Node 1: Fetch sensor data ────────────────────────────────────────────────
 
 def fetch_sensor_data(state: AgentState) -> AgentState:
+    """Fetch sensor data via MCP server."""
     print(f"[Node 1] Fetching data for sensor: {state.sensor_id}")
-
-    import random
-    from datetime import datetime, timedelta
-
-    SENSORS = {
-        "temp_001":      {"name": "Boiler Temperature",      "unit": "°C",    "normal_range": [60, 85],   "location": "Plant A - Zone 2"},
-        "pressure_001":  {"name": "Pipeline Pressure",       "unit": "bar",   "normal_range": [4.0, 6.5], "location": "Plant A - Zone 1"},
-        "flow_001":      {"name": "Coolant Flow Rate",       "unit": "L/min", "normal_range": [45, 75],   "location": "Plant B - Zone 3"},
-        "vibration_001": {"name": "Pump Vibration",          "unit": "mm/s",  "normal_range": [0.5, 4.0], "location": "Plant B - Zone 1"},
-        "humidity_001":  {"name": "Control Room Humidity",   "unit": "%RH",   "normal_range": [40, 60],   "location": "Control Room"},
-    }
-
-    sensor = SENSORS.get(state.sensor_id)
-    if not sensor:
-        return AgentState(**{**state.model_dump(), "error": f"Unknown sensor: {state.sensor_id}"})
-
-    low, high = sensor["normal_range"]
-    value = round(random.uniform(high * 1.1, high * 1.3), 2)
-
-    reading = {
-        "sensor_id": state.sensor_id,
-        "name": sensor["name"],
-        "value": value,
-        "unit": sensor["unit"],
-        "normal_range": sensor["normal_range"],
-        "location": sensor["location"],
-        "timestamp": datetime.utcnow().isoformat(),
-        "status": "CRITICAL_HIGH",
-    }
-
-    now = datetime.utcnow()
-    history = []
-    for i in range(10):
-        ts = now - timedelta(minutes=(10 - i) * 5)
-        v = round(random.uniform(low, high * 1.3), 2)
-        history.append({**reading, "value": v, "timestamp": ts.isoformat()})
-
-    return AgentState(**{**state.model_dump(), "raw_reading": reading, "history": history})
+    try:
+        reading = run_mcp_tool("get_reading", {"sensor_id": state.sensor_id})
+        history = run_mcp_tool("get_history", {"sensor_id": state.sensor_id, "n": 10})
+        print(f"[DEBUG] Reading: {reading}")
+        print(f"[DEBUG] History count: {len(history) if history else 0}")
+        return AgentState(**{**state.model_dump(), "raw_reading": reading, "history": history})
+    except Exception as e:
+        print(f"[DEBUG] MCP error: {e}")
+        import traceback
+        traceback.print_exc()
+        return AgentState(**{**state.model_dump(), "error": str(e)})
 
 
 # ── Node 2: Detect anomaly ───────────────────────────────────────────────────
