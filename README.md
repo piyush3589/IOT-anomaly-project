@@ -1,24 +1,23 @@
 # IoT Anomaly Copilot
 [![Live Demo](https://img.shields.io/badge/Live-Demo-green)](https://iot-project-6ogr.onrender.com/docs)
 
-
 An AI agent that monitors IoT sensors, detects anomalies using an LLM, retrieves remediation playbooks via RAG, and returns structured incident reports — all through a single API call.
 
-Built to demonstrate: MCP · LangGraph · Agentic Loops · RAG · ChromaDB · FastAPI · Pydantic · Groq
+Built to demonstrate: **MCP · LangGraph · Agentic Loops · RAG · ChromaDB · FastAPI · Pydantic · Groq**
 
+---
 
-What it does
+## What it does
 
 You send a sensor ID. The agent does the rest:
 
+1. **Fetches live sensor data** via Model Context Protocol (MCP) tools
+2. **Detects anomaly** — Groq LLaMA 3.3 analyses reading + 10-point history, classifies severity (LOW / MEDIUM / HIGH / CRITICAL)
+3. **Retrieves remediation playbook** — semantic search over ChromaDB knowledge base
+4. **Evaluates its own confidence** — if confidence < 0.5, the agent reformulates the query and retries RAG (up to 2 attempts)
+5. **Returns structured report** — root cause, step-by-step fix, responsible teams, escalation flag
 
-Fetches live sensor data via Model Context Protocol (MCP) tools
-Detects anomaly — Groq LLaMA 3.3 analyses reading + 10-point history, classifies severity (LOW / MEDIUM / HIGH / CRITICAL)
-Retrieves remediation playbook — semantic search over ChromaDB knowledge base
-Evaluates its own confidence — if confidence < 0.5, the agent reformulates the query and retries RAG (up to 2 attempts)
-Returns structured report — root cause, step-by-step fix, responsible teams, escalation flag
-
-
+```
 POST /analyze  {"sensor_id": "temp_001"}
         │
         ▼
@@ -40,35 +39,38 @@ POST /analyze  {"sensor_id": "temp_001"}
 │                    ↑___________________________|        │
 │              (max 2 retries, refined query)             │
 └─────────────────────────────────────────────────────────┘
+```
 
+---
 
-Agentic Behavior — Confidence Evaluation Loop
+## Agentic Behavior — Confidence Evaluation Loop
 
 Most RAG pipelines retrieve once and answer regardless of quality. This agent evaluates its own output before finalizing.
 
 After generating a report, the agent checks its confidence score:
 
-
-Confidence ≥ 0.5 → report is finalized and returned
-Confidence < 0.5 → agent decides to retry, reformulates the retrieval query using anomaly severity, deviation percentage, and trend — then retrieves again
-Max 2 retries — prevents infinite loops while allowing meaningful self-correction
-
+- **Confidence ≥ 0.5** → report is finalized and returned
+- **Confidence < 0.5** → agent decides to retry, reformulates the retrieval query using anomaly severity, deviation percentage, and trend — then retrieves again
+- **Max 2 retries** — prevents infinite loops while allowing meaningful self-correction
 
 The retry decision is made at runtime based on observed output quality — not hardcoded by the developer. This is what distinguishes an agentic system from a linear pipeline.
 
-In logs:
-
+**In logs:**
+```
 [Node 3] RAG retrieval for: Boiler temperature critically high
 [Node 4] Generating action report (attempt 1)
 [Agent] Low confidence (0.38) — retrying RAG (attempt 1)
 [Node 3] RAG RETRY 1 — refining query
 [Node 4] Generating action report (attempt 2)
 [Agent] Confidence acceptable (0.71) — finalizing report
+```
 
+---
 
-Sample output
+## Sample output
 
-json{
+```json
+{
   "duration_ms": 47381,
   "result": {
     "report_id": "fe05a29f-a4f0-4bff-bb89-b7ff417e8341",
@@ -102,25 +104,44 @@ json{
     "agent_reasoning": "Boiler at 94.59°C is 11.41% above normal max of 85°C. RAG retrieved coolant flow playbook with 74% confidence. Recommended immediate load reduction and valve inspection."
   }
 }
+```
 
+---
 
-Stack
+## Stack
 
-ComponentLibraryAgent orchestrationLangGraph 0.2LLMGroq — LLaMA 3.3-70b-versatileMCP servermcp official Python SDKVector storeChromaDB + sentence-transformersAPIFastAPI + UvicornStructured outputsPydantic v2ObservabilityLangSmith (optional)
+| Component | Library |
+|---|---|
+| Agent orchestration | LangGraph 0.2 |
+| LLM | Groq — LLaMA 3.3-70b-versatile |
+| MCP server | `mcp` official Python SDK |
+| Vector store | ChromaDB + sentence-transformers |
+| API | FastAPI + Uvicorn |
+| Structured outputs | Pydantic v2 |
+| Observability | LangSmith (optional) |
 
+---
 
-Sensors monitored
+## Sensors monitored
 
-Sensor IDNameUnitNormal Rangetemp_001Boiler Temperature°C60–85pressure_001Pipeline Pressurebar4.0–6.5flow_001Coolant Flow RateL/min45–75vibration_001Pump Vibrationmm/s0.5–4.0humidity_001Control Room Humidity%RH40–60
+| Sensor ID | Name | Unit | Normal Range |
+|---|---|---|---|
+| `temp_001` | Boiler Temperature | °C | 60–85 |
+| `pressure_001` | Pipeline Pressure | bar | 4.0–6.5 |
+| `flow_001` | Coolant Flow Rate | L/min | 45–75 |
+| `vibration_001` | Pump Vibration | mm/s | 0.5–4.0 |
+| `humidity_001` | Control Room Humidity | %RH | 40–60 |
 
+---
 
-API: https://iot-project-6ogr.onrender.com
+**API:** https://iot-project-6ogr.onrender.com
 
-Swagger UI: https://iot-project-6ogr.onrender.com/docs
+**Swagger UI:** https://iot-project-6ogr.onrender.com/docs
 
-Quickstart
+## Quickstart
 
-bash# 1. Clone and create virtual environment
+```bash
+# 1. Clone and create virtual environment
 git clone https://github.com/yourusername/iot-anomaly-copilot
 cd iot-anomaly-copilot
 python -m venv venv
@@ -141,10 +162,12 @@ uvicorn api.main:app --reload
 
 # 6. Open Swagger UI
 # http://localhost:8000/docs
+```
 
-Test via curl
+### Test via curl
 
-bash# Run full agent analysis
+```bash
+# Run full agent analysis
 curl -X POST http://localhost:8000/analyze \
   -H "Content-Type: application/json" \
   -d '{"sensor_id": "temp_001"}'
@@ -156,10 +179,13 @@ for sensor in temp_001 pressure_001 flow_001 vibration_001 humidity_001; do
     -H "Content-Type: application/json" \
     -d "{\"sensor_id\": \"$sensor\"}" | python -m json.tool
 done
+```
 
+---
 
-Project structure
+## Project structure
 
+```
 iot-anomaly-copilot/
 ├── mcp_server/
 │   ├── server.py        # MCP server — exposes sensor tools
@@ -177,24 +203,36 @@ iot-anomaly-copilot/
 ├── Dockerfile
 ├── docker-compose.yml
 └── .github/workflows/ci.yml
+```
 
+---
 
-API endpoints
+## API endpoints
 
-MethodEndpointDescriptionGET/healthHealth checkGET/sensorsList all sensorsGET/sensors/{id}/readingLatest readingGET/sensors/{id}/historyLast N readingsPOST/analyzeRun full agent pipelinePOST/analyze/batchAnalyze multiple sensors
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `GET` | `/sensors` | List all sensors |
+| `GET` | `/sensors/{id}/reading` | Latest reading |
+| `GET` | `/sensors/{id}/history` | Last N readings |
+| `POST` | `/analyze` | Run full agent pipeline |
+| `POST` | `/analyze/batch` | Analyze multiple sensors |
 
+---
 
-Docker
+## Docker
 
-bashdocker-compose up --build
+```bash
+docker-compose up --build
+```
 
+---
 
-Key concepts demonstrated
+## Key concepts demonstrated
 
-
-Agentic confidence loop — agent evaluates its own report quality and retries RAG with a refined query if confidence < 0.5, up to 2 times. The retry decision is made at runtime, not hardcoded.
-Model Context Protocol (MCP) — LLM agent calls sensor tools via MCP rather than hardcoded function calls
-LangGraph stateful graph — conditional edges, runtime branching, and cycle support
-RAG pipeline — ChromaDB semantic search over domain-specific remediation knowledge
-Pydantic v2 structured outputs — every LLM response is validated and typed
-FastAPI — production-ready REST API with auto-generated Swagger docs
+- **Agentic confidence loop** — agent evaluates its own report quality and retries RAG with a refined query if confidence < 0.5, up to 2 times. The retry decision is made at runtime, not hardcoded.
+- **Model Context Protocol (MCP)** — LLM agent calls sensor tools via MCP rather than hardcoded function calls
+- **LangGraph stateful graph** — conditional edges, runtime branching, and cycle support
+- **RAG pipeline** — ChromaDB semantic search over domain-specific remediation knowledge
+- **Pydantic v2 structured outputs** — every LLM response is validated and typed
+- **FastAPI** — production-ready REST API with auto-generated Swagger docs
