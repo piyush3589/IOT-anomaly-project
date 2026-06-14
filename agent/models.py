@@ -82,3 +82,4 @@ class AgentState(BaseModel):
     rag_context: Optional[str] = None
     report: Optional[ActionReport] = None
     error: Optional[str] = None
+    retry_count: int = 0
