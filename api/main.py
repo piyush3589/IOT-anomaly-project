@@ -22,6 +22,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import time
+from mcp_server.client import run_mcp_tool
+
 
 
 from agent.graph import run_analysis
