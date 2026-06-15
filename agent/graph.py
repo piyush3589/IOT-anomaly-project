@@ -283,8 +283,8 @@ def build_graph():
 agent = build_graph()
 
 
-def run_analysis(sensor_id: str) -> dict:
-    initial_state = AgentState(sensor_id=sensor_id, retry_count=0)
+def run_analysis(sensor_id: str,force_normal: bool = False) -> dict:
+    initial_state = AgentState(sensor_id=sensor_id,force_normal=force_normal,retry_count=0)
     final_state = agent.invoke(initial_state)
 
     if final_state.get("error"):
