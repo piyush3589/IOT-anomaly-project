@@ -72,7 +72,7 @@ class ActionReport(BaseModel):
     agent_reasoning: str = Field(description="Brief explanation of how the agent reached this conclusion")
 
 
-class AgentState(BaseModel):
+class AgentState(TypedDict):
     """LangGraph state — passed between nodes."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
     sensor_id: str
