@@ -11,7 +11,7 @@ import os
 import json
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional, TypedDict
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -21,13 +21,11 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 
 from agent.models import (
-    AgentState, AnomalyDetection, ActionReport,
+    AnomalyDetection, ActionReport,
     RemediationStep, SeverityLevel,
 )
 from agent.retriever import retriever
 from mcp_server.client import run_mcp_tool
-
-
 
 # ── LLM setup ───────────────────────────────────────────────────────────────
 
@@ -38,31 +36,45 @@ llm = ChatGroq(
 )
 
 
+# ── State — TypedDict for LangGraph ─────────────────────────────────────────
+
+class AgentState(TypedDict):
+    sensor_id: str
+    raw_reading: Optional[dict]
+    history: Optional[list]
+    anomaly: Optional[AnomalyDetection]
+    rag_context: Optional[str]
+    report: Optional[ActionReport]
+    error: Optional[str]
+    retry_count: int
+    force_normal: bool
+
+
 # ── Node 1: Fetch sensor data ────────────────────────────────────────────────
 
 def fetch_sensor_data(state: AgentState) -> AgentState:
-    """Fetch sensor data via MCP server."""
-    print(f"[Node 1] Fetching data for sensor: {state.sensor_id}")
+    print(f"[Node 1] Fetching data for sensor: {state['sensor_id']}")
     try:
-        reading = run_mcp_tool("get_reading", {"sensor_id": state.sensor_id,"anomalous": not state.force_normal})
-        history = run_mcp_tool("get_history", {"sensor_id": state.sensor_id, "n": 10})
+        reading = run_mcp_tool("get_reading", {
+            "sensor_id": state["sensor_id"],
+            "anomalous": not state.get("force_normal", False)
+        })
+        history = run_mcp_tool("get_history", {"sensor_id": state["sensor_id"], "n": 10})
         print(f"[DEBUG] Reading: {reading}")
-        print(f"[DEBUG] History count: {len(history) if history else 0}")
-        return AgentState(**{**state.model_dump(), "raw_reading": reading, "history": history})
+        print(f"[DEBUG] force_normal: {state.get('force_normal')}, anomalous: {not state.get('force_normal', False)}")
+        return {**state, "raw_reading": reading, "history": history}
     except Exception as e:
         print(f"[DEBUG] MCP error: {e}")
-        import traceback
-        traceback.print_exc()
-        return AgentState(**{**state.model_dump(), "error": str(e)})
+        return {**state, "error": str(e)}
 
 
 # ── Node 2: Detect anomaly ───────────────────────────────────────────────────
 
 def detect_anomaly(state: AgentState) -> AgentState:
-    print(f"[Node 2] Detecting anomaly for sensor: {state.sensor_id}")
+    print(f"[Node 2] Detecting anomaly for sensor: {state['sensor_id']}")
 
-    reading = state.raw_reading
-    history_values = [r["value"] for r in (state.history or [])]
+    reading = state["raw_reading"]
+    history_values = [r["value"] for r in (state.get("history") or [])]
 
     prompt = f"""You are an IoT anomaly detection expert.
 
@@ -73,7 +85,7 @@ HISTORICAL VALUES (oldest → newest): {history_values}
 
 Analyse whether this reading is anomalous. Respond ONLY with a JSON object matching this schema exactly:
 {{
-  "sensor_id": "{state.sensor_id}",
+  "sensor_id": "{state['sensor_id']}",
   "is_anomalous": true/false,
   "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
   "current_value": <number>,
@@ -96,14 +108,21 @@ Rules:
     try:
         response = llm.invoke([HumanMessage(content=prompt)])
         raw = response.content.strip()
-        print(f"[DEBUG] Raw LLM response: {raw}")
 
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
 
-        data = json.loads(raw.strip())
+        import re
+        try:
+            data = json.loads(raw.strip())
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+            else:
+                raise ValueError(f"No valid JSON in LLM response: {raw[:200]}")
 
     except Exception as e:
         print(f"[DEBUG] Error in detect_anomaly: {e}")
@@ -131,45 +150,46 @@ Rules:
                 data["deviation_pct"] = 0.0
 
     anomaly = AnomalyDetection(**data)
-    return AgentState(**{**state.model_dump(), "anomaly": anomaly})
+    return {**state, "anomaly": anomaly}
 
 
 # ── Node 3: RAG retrieval ────────────────────────────────────────────────────
 
 def rag_remediate(state: AgentState) -> AgentState:
-    retry_count = state.retry_count
+    retry_count = state.get("retry_count", 0)
+    anomaly = state["anomaly"]
 
-    # On retry, use more specific query targeting weak areas
     if retry_count > 0:
         print(f"[Node 3] RAG RETRY {retry_count} — refining query")
         query = (
-            f"SPECIFIC remediation for {state.anomaly.severity} severity "
-            f"{state.anomaly.summary} "
-            f"deviation {state.anomaly.deviation_pct}% "
-            f"trend {state.anomaly.trend} "
-            f"sensor {state.sensor_id}"
+            f"SPECIFIC remediation for {anomaly.severity} severity "
+            f"{anomaly.summary} "
+            f"deviation {anomaly.deviation_pct}% "
+            f"trend {anomaly.trend} "
+            f"sensor {state['sensor_id']}"
         )
     else:
-        print(f"[Node 3] RAG retrieval for: {state.anomaly.summary}")
+        print(f"[Node 3] RAG retrieval for: {anomaly.summary}")
         query = (
-            f"{state.anomaly.summary} "
-            f"sensor {state.sensor_id} "
-            f"value {state.anomaly.current_value} {state.anomaly.unit} "
-            f"severity {state.anomaly.severity}"
+            f"{anomaly.summary} "
+            f"sensor {state['sensor_id']} "
+            f"value {anomaly.current_value} {anomaly.unit} "
+            f"severity {anomaly.severity}"
         )
 
     context, source_id, confidence = retriever.retrieve(query)
     enriched = f"[Source: {source_id} | Confidence: {confidence}]\n\n{context}"
-    return AgentState(**{**state.model_dump(), "rag_context": enriched})
+    return {**state, "rag_context": enriched}
 
 
 # ── Node 4: Generate report ──────────────────────────────────────────────────
 
 def generate_report(state: AgentState) -> AgentState:
-    print(f"[Node 4] Generating action report (attempt {state.retry_count + 1})")
+    retry_count = state.get("retry_count", 0)
+    print(f"[Node 4] Generating action report (attempt {retry_count + 1})")
 
-    reading = state.raw_reading
-    anomaly = state.anomaly
+    reading = state["raw_reading"]
+    anomaly = state["anomaly"]
 
     prompt = f"""You are an industrial IoT incident response system.
 
@@ -177,16 +197,16 @@ ANOMALY DETECTED:
 {anomaly.model_dump_json(indent=2)}
 
 SENSOR LOCATION: {reading.get('location', 'Unknown')}
-SENSOR NAME: {reading.get('name', state.sensor_id)}
+SENSOR NAME: {reading.get('name', state['sensor_id'])}
 
 REMEDIATION KNOWLEDGE BASE CONTEXT:
-{state.rag_context}
+{state['rag_context']}
 
 Generate a JSON action report matching this schema EXACTLY (no extra fields):
 {{
   "report_id": "{str(uuid.uuid4())}",
   "generated_at": "{datetime.utcnow().isoformat()}",
-  "sensor_id": "{state.sensor_id}",
+  "sensor_id": "{state['sensor_id']}",
   "sensor_name": "<from reading>",
   "location": "<from reading>",
   "anomaly": <copy the anomaly JSON exactly>,
@@ -217,32 +237,28 @@ Include 3–5 remediation steps. Be specific and actionable.
     data["anomaly"] = anomaly.model_dump()
 
     report = ActionReport(**data)
-    return AgentState(**{**state.model_dump(), "report": report})
+    return {**state, "report": report, "retry_count": retry_count + 1}
 
 
-# ── Conditional edge 1: skip remediation if no anomaly ───────────────────────
+# ── Conditional edge 1: skip if no anomaly ───────────────────────────────────
 
 def should_remediate(state: AgentState) -> Literal["rag_remediate", "skip"]:
-    if state.error:
+    if state.get("error"):
         return "skip"
-    if state.anomaly and not state.anomaly.is_anomalous:
+    anomaly = state.get("anomaly")
+    if anomaly and not anomaly.is_anomalous:
         return "skip"
     return "rag_remediate"
 
 
-# ── Conditional edge 2: retry if confidence is low ───────────────────────────
+# ── Conditional edge 2: retry if low confidence ──────────────────────────────
 
 def should_retry(state: AgentState) -> Literal["rag_remediate", "__end__"]:
-    """
-    Agentic loop: agent evaluates its own report confidence.
-    If confidence < 0.5 and retries < 2, loop back to RAG with refined query.
-    This is the decision the agent makes at runtime — not hardcoded by the developer.
-    """
-    report = state.report
-    retry_count = state.retry_count
+    report = state.get("report")
+    retry_count = state.get("retry_count", 0)
 
     if report and report.confidence < 0.5 and retry_count < 2:
-        print(f"[Agent] Low confidence ({report.confidence}) — retrying RAG (attempt {retry_count + 1})")
+        print(f"[Agent] Low confidence ({report.confidence}) — retrying RAG (attempt {retry_count})")
         return "rag_remediate"
 
     print(f"[Agent] Confidence acceptable ({report.confidence if report else 'N/A'}) — finalizing report")
@@ -270,7 +286,6 @@ def build_graph():
 
     graph.add_edge("rag_remediate", "generate_report")
 
-    # ← Agentic loop: agent decides whether to retry based on its own confidence
     graph.add_conditional_edges(
         "generate_report",
         should_retry,
@@ -283,15 +298,26 @@ def build_graph():
 agent = build_graph()
 
 
-def run_analysis(sensor_id: str,force_normal: bool = False) -> dict:
-    initial_state = AgentState(sensor_id=sensor_id,force_normal=force_normal,retry_count=0)
+def run_analysis(sensor_id: str, force_normal: bool = False) -> dict:
+    initial_state: AgentState = {
+        "sensor_id": sensor_id,
+        "raw_reading": None,
+        "history": None,
+        "anomaly": None,
+        "rag_context": None,
+        "report": None,
+        "error": None,
+        "retry_count": 0,
+        "force_normal": force_normal,
+    }
     final_state = agent.invoke(initial_state)
 
     if final_state.get("error"):
         return {"error": final_state["error"]}
     if final_state.get("report"):
         return final_state["report"].model_dump()
-    if final_state.get("anomaly") and not final_state["anomaly"]["is_anomalous"]:
+    anomaly = final_state.get("anomaly")
+    if anomaly and not anomaly.is_anomalous:
         return {
             "sensor_id": sensor_id,
             "status": "NORMAL",
