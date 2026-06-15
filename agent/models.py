@@ -72,16 +72,3 @@ class ActionReport(BaseModel):
     agent_reasoning: str = Field(description="Brief explanation of how the agent reached this conclusion")
 
 
-class AgentState(TypedDict):
-    """LangGraph state — passed between nodes."""
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    sensor_id: str
-    raw_reading: Optional[dict] = None
-    history: Optional[list[dict]] = None
-    anomaly: Optional[AnomalyDetection] = None
-    rag_context: Optional[str] = None
-    report: Optional[ActionReport] = None
-    error: Optional[str] = None
-    retry_count: int = 0
-    force_normal: bool = False
-
