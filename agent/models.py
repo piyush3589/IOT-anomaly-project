@@ -74,6 +74,7 @@ class ActionReport(BaseModel):
 
 class AgentState(BaseModel):
     """LangGraph state — passed between nodes."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     sensor_id: str
     raw_reading: Optional[dict] = None
     history: Optional[list[dict]] = None
