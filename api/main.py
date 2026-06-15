@@ -103,7 +103,7 @@ def analyze_sensor(req: AnalyzeRequest):
     start = time.time()
 
     try:
-        result = run_analysis(req.sensor_id)
+        result = run_analysis(req.sensor_id,force_normal=req.force_normal)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
