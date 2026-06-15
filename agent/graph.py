@@ -82,6 +82,10 @@ CURRENT READING:
 {json.dumps(reading, indent=2)}
 
 HISTORICAL VALUES (oldest → newest): {history_values}
+IMPORTANT: Normal range is {reading.get('normal_range')}. Current value is {reading.get('value')}.
+If current value is within normal range, is_anomalous MUST be false and severity MUST be LOW.
+
+Analyse whether this reading is anomalous...
 
 Analyse whether this reading is anomalous. Respond ONLY with a JSON object matching this schema exactly:
 {{
