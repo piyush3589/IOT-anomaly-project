@@ -14,7 +14,9 @@ langgraph==0.2.60
 mcp==1.2.0
 httpx==0.28.1
 
+
 sentence-transformers==3.3.1
+
 
 # Vector store
 chromadb==0.5.23
@@ -24,4 +26,6 @@ langchain-chroma==0.1.4
 langsmith==0.2.3
 
 python-dotenv==1.0.1
+
 slowapi==0.1.9
+

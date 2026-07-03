@@ -11,10 +11,38 @@ from fastapi.security import APIKeyHeader
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+"""
+FastAPI — REST layer over the LangGraph agent.
+
+Endpoints:
+  GET  /sensors          → list all available sensors (via MCP)
+  POST /analyze          → run full agent pipeline for a sensor
+  GET  /health           → health check
+"""
+
+import asyncio
+import sys
+
+if sys.platform == "windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 from typing import Optional
 import time
 from mcp_server.client import run_mcp_tool
+
+
+
+
+
 from agent.graph import run_analysis
 
 app = FastAPI(
@@ -23,6 +51,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
 )
+
 
 # -- OWASP: Rate limiting setup ----------------------------------------------
 # Mitigates API4:2023 Unrestricted Resource Consumption - prevents anyone
@@ -62,10 +91,25 @@ app.add_middleware(
 
 
 # -- Request / response models ------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Request / response models ────────────────────────────────────────────────
+
+
 class AnalyzeRequest(BaseModel):
     sensor_id: str
     include_history: bool = False
     force_normal: bool = False
+
+
+
 
 
 class AnalyzeResponse(BaseModel):
