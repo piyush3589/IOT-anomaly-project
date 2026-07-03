@@ -198,11 +198,7 @@ uvicorn api.main:app --reload
 
 ---
 
-## Docker
 
-```bash
-docker-compose up --build
-```
 
 ---
 
