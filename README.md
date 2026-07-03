@@ -124,7 +124,18 @@ Unauthenticated requests to protected endpoints return `401 Unauthorized`. Reque
   }
 }
 ```
+## Docker
 
+```bash
+# Copy and configure environment
+cp .env.example .env
+# Add GROQ_API_KEY and API_KEY to .env
+
+# Build and run
+docker-compose up --build
+
+# API available at http://localhost:7860/docs
+```
 ---
 
 ## Stack
