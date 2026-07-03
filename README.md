@@ -3,7 +3,7 @@
 An AI agent that monitors IoT sensors, detects anomalies using an LLM, retrieves remediation playbooks via RAG, and returns structured incident reports — all through a single API call.
 
 **Live Demo:** https://pi3900-iot.hf.space/docs  
-**API:** https://iot-project-6ogr.onrender.com  
+**API:** https://iot-project-6ogr.onrender.com/docs  
 **Stack:** LangGraph · MCP · ChromaDB · Groq LLaMA 3.3-70b · FastAPI · Pydantic v2 · Docker
 
 ---
